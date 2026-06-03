@@ -176,6 +176,29 @@
     font-size:10px; color:#9ab; margin-top:8px; line-height:1.7; letter-spacing:0.5px;
   }
   .ship-card .sstats b { color:#cde; }
+  /* controls list */
+  #controls-list {
+    display:flex; flex-direction:column; gap:10px;
+    margin-top:24px; width:320px; max-width:88vw;
+  }
+  .ctrl-row {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:9px 16px;
+    border:1px solid rgba(0,240,255,0.3); border-radius:6px;
+    background:rgba(10,10,40,0.45);
+  }
+  .ctrl-row .cname { color:#d8e8ff; letter-spacing:1px; font-size:15px; }
+  .ctrl-key {
+    min-width:70px; text-align:center; padding:6px 12px;
+    border:1px solid var(--neon-cyan); border-radius:4px;
+    color:var(--neon-cyan); cursor:pointer; font-weight:bold; font-size:14px;
+    box-shadow:0 0 8px rgba(0,240,255,0.25); transition:all .12s;
+  }
+  .ctrl-key:hover { background:var(--neon-cyan); color:var(--bg-deep); }
+  .ctrl-key.listening {
+    border-color:var(--neon-pink); color:var(--neon-pink);
+    box-shadow:0 0 14px var(--neon-pink); animation:flicker 1s infinite;
+  }
 </style>
 </head>
 <body>
@@ -198,6 +221,7 @@
     <div class="title">NEON VOID</div>
     <div class="subtitle">SHOOTER SPATIAL</div>
     <button class="btn" id="start-btn">▶ JOUER</button>
+    <button class="btn" id="open-controls-btn" style="margin-top:16px;padding:11px 32px;font-size:clamp(13px,3.2vw,17px)">⚙ TOUCHES</button>
     <div class="help">
       <b>←  →  ↑  ↓</b> ou <b>ZQSD</b> : se déplacer<br>
       <b>ESPACE</b> : tirer &nbsp;·&nbsp; <b>P</b> : pause &nbsp;·&nbsp; <b>M</b> : muet<br>
@@ -211,6 +235,17 @@
     <div class="title" style="font-size:clamp(26px,6vw,52px)">CHOISIS TON VAISSEAU</div>
     <div id="ship-cards"></div>
     <div class="help" style="margin-top:18px">Clique un vaisseau pour décoller 🚀</div>
+  </div>
+
+  <!-- Controls / key remapping -->
+  <div id="controls-screen" class="overlay hidden">
+    <div class="title" style="font-size:clamp(24px,6vw,48px)">TOUCHES</div>
+    <div id="controls-list"></div>
+    <div class="help" style="margin-top:16px">Clique une touche, puis appuie sur la nouvelle.<br><b>Échap</b> pour annuler. Les flèches ← → ↑ ↓ marchent toujours.</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center">
+      <button class="btn" id="controls-back" style="margin-top:22px;padding:11px 30px;font-size:16px">← RETOUR</button>
+      <button class="btn" id="controls-reset" style="margin-top:22px;padding:11px 30px;font-size:16px;border-color:var(--neon-pink);color:var(--neon-pink);box-shadow:0 0 14px rgba(255,0,170,0.4),0 0 14px rgba(255,0,170,0.4) inset">↺ DÉFAUT</button>
+    </div>
   </div>
 
   <!-- Pause -->
@@ -335,17 +370,42 @@ const Audio = (() => {
   };
 })();
 
-// ---------- Input ----------
+// ---------- Input & touches configurables ----------
 const keys = {};
+const DEFAULT_CONTROLS = { up:'z', down:'s', left:'q', right:'d', shoot:' ', pause:'p', mute:'m' };
+let controls = loadControls();
+let rebindAction = null; // action en cours de réassignement
+
+function loadControls() {
+  try { return Object.assign({}, DEFAULT_CONTROLS, JSON.parse(localStorage.getItem('neonVoidControls') || '{}')); }
+  catch (e) { return Object.assign({}, DEFAULT_CONTROLS); }
+}
+function saveControls() { localStorage.setItem('neonVoidControls', JSON.stringify(controls)); }
+function keyLabel(k) {
+  if (k === ' ') return 'Espace';
+  if (!k) return '—';
+  const map = { arrowup:'↑', arrowdown:'↓', arrowleft:'←', arrowright:'→', escape:'Échap', enter:'Entrée', shift:'Maj', control:'Ctrl', tab:'Tab' };
+  if (map[k]) return map[k];
+  return k.length === 1 ? k.toUpperCase() : k.charAt(0).toUpperCase() + k.slice(1);
+}
+
 window.addEventListener('keydown', e => {
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
-  keys[e.key.toLowerCase()] = true;
-  if (e.key === ' ') keys['space'] = true;
-  if (e.key.toLowerCase() === 'p') togglePause();
+  const k = e.key === ' ' ? ' ' : e.key.toLowerCase();
+  // Mode réassignement : la prochaine touche est capturée
+  if (rebindAction) {
+    e.preventDefault();
+    if (k !== 'escape') { controls[rebindAction] = k; saveControls(); }
+    rebindAction = null;
+    renderControls();
+    return;
+  }
+  if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
+  keys[k] = true;
+  if (k === controls.pause) togglePause();
+  if (k === controls.mute && typeof muteBtn !== 'undefined') muteBtn.click();
 });
 window.addEventListener('keyup', e => {
-  keys[e.key.toLowerCase()] = false;
-  if (e.key === ' ') keys['space'] = false;
+  keys[e.key === ' ' ? ' ' : e.key.toLowerCase()] = false;
 });
 
 // Touch: glisser pour déplacer, tir auto
@@ -484,12 +544,12 @@ function update() {
 
   if (state !== State.PLAY) return;
 
-  // --- Player movement ---
+  // --- Player movement (touches configurables + flèches toujours actives) ---
   let mx = 0, my = 0;
-  if (keys['arrowleft'] || keys['q'] || keys['a']) mx -= 1;
-  if (keys['arrowright'] || keys['d']) mx += 1;
-  if (keys['arrowup'] || keys['z'] || keys['w']) my -= 1;
-  if (keys['arrowdown'] || keys['s']) my += 1;
+  if (keys[controls.left]  || keys['arrowleft'])  mx -= 1;
+  if (keys[controls.right] || keys['arrowright']) mx += 1;
+  if (keys[controls.up]    || keys['arrowup'])    my -= 1;
+  if (keys[controls.down]  || keys['arrowdown'])  my += 1;
   player.x += mx * player.speed;
   player.y += my * player.speed;
 
@@ -502,10 +562,8 @@ function update() {
 
   // --- Shooting ---
   if (player.cooldown > 0) player.cooldown--;
-  const wantShoot = keys['space'] || keys['arrowup']===undefined && false || touchActive ||
-                    keys['x'] || keys[' '];
   const autofire = touchActive; // mobile auto-fire
-  if ((keys['space'] || autofire) && player.cooldown <= 0) {
+  if ((keys[controls.shoot] || autofire) && player.cooldown <= 0) {
     fireBullets();
     player.cooldown = Math.max(5, 12 - weaponLevel - player.fireBonus);
     Audio.shoot();
@@ -1017,6 +1075,39 @@ document.getElementById('start-btn').onclick = openShipSelect;
 document.getElementById('restart-btn').onclick = openShipSelect;
 document.getElementById('resume-btn').onclick = togglePause;
 
+// ---- Écran de configuration des touches ----
+const ACTION_LABELS = [
+  ['up','Haut'], ['down','Bas'], ['left','Gauche'], ['right','Droite'],
+  ['shoot','Tirer'], ['pause','Pause'], ['mute','Muet']
+];
+function renderControls() {
+  const list = document.getElementById('controls-list');
+  list.innerHTML = '';
+  ACTION_LABELS.forEach(([action, label]) => {
+    const row = document.createElement('div'); row.className = 'ctrl-row';
+    const nm = document.createElement('span'); nm.className = 'cname'; nm.textContent = label;
+    const key = document.createElement('span'); key.className = 'ctrl-key';
+    if (rebindAction === action) { key.textContent = '...'; key.classList.add('listening'); }
+    else { key.textContent = keyLabel(controls[action]); }
+    key.onclick = () => { rebindAction = action; renderControls(); };
+    row.appendChild(nm); row.appendChild(key);
+    list.appendChild(row);
+  });
+}
+function openControls() {
+  Audio.init();
+  rebindAction = null;
+  renderControls();
+  hide('start-screen'); show('controls-screen');
+}
+document.getElementById('open-controls-btn').onclick = openControls;
+document.getElementById('controls-back').onclick = () => {
+  rebindAction = null; hide('controls-screen'); show('start-screen');
+};
+document.getElementById('controls-reset').onclick = () => {
+  controls = Object.assign({}, DEFAULT_CONTROLS); saveControls(); rebindAction = null; renderControls();
+};
+
 // ---- Mute toggle ----
 const muteBtn = document.getElementById('mute-btn');
 muteBtn.onclick = () => {
@@ -1026,9 +1117,6 @@ muteBtn.onclick = () => {
   muteBtn.textContent = m ? '🔇' : '🔊';
   muteBtn.classList.toggle('muted', m);
 };
-window.addEventListener('keydown', e => {
-  if (e.key.toLowerCase() === 'm') muteBtn.click();
-});
 
 // ============================================================
 //  MAIN LOOP
