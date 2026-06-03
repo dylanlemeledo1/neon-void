@@ -1272,16 +1272,16 @@ function drawBoss(e) {
   ctx.restore();
   ctx.shadowBlur = 0;
 
-  // boss HP bar
-  const bw = W - 60, bx = 30, by = 20;
+  // boss HP bar (sous la ligne du HUD pour éviter le chevauchement)
+  const bw = W - 60, bx = 30, by = 56;
   ctx.fillStyle = 'rgba(255,255,255,0.15)';
   ctx.fillRect(bx, by, bw, 8);
   ctx.fillStyle = '#ff00aa';
   ctx.shadowColor = '#ff00aa'; ctx.shadowBlur = 10;
   ctx.fillRect(bx, by, bw * (e.hp/e.maxHp), 8);
   ctx.shadowBlur = 0;
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 11px monospace'; ctx.textAlign='center';
-  ctx.fillText(e.mini ? '◆ MINI-BOSS ◆' : '◆ BOSS ◆', W/2, by - 6);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 11px monospace'; ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+  ctx.fillText(e.mini ? '◆ MINI-BOSS ◆' : '◆ BOSS ◆', W/2, by - 5);
 }
 
 // ============================================================
