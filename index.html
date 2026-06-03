@@ -111,7 +111,7 @@
   #hud {
     position: absolute; top: 0; left: 0; right: 0;
     display: flex; justify-content: space-between;
-    padding: 14px 20px;
+    padding: 14px 64px 14px 20px;
     font-size: clamp(13px, 3.2vw, 18px);
     letter-spacing: 2px;
     pointer-events: none;
@@ -384,7 +384,8 @@ let selectedShip = SHIPS[1];
 const State = { MENU:0, SHIPSEL:4, PLAY:1, PAUSE:2, OVER:3 };
 let state = State.MENU;
 
-let player, bullets, enemyBullets, enemies, particles, powerups, stars;
+let player = null;
+let bullets = [], enemyBullets = [], enemies = [], particles = [], powerups = [], stars = [];
 let score, wave, lives, weaponLevel, shieldTime, spawnTimer, waveTimer, enemiesToSpawn, bossActive, frame;
 let bestScore = +(localStorage.getItem('neonVoidBest') || 0);
 
@@ -711,7 +712,8 @@ function render() {
   }
   ctx.globalAlpha = 1;
 
-  if (state === State.MENU) return;
+  // Ne dessine les entites QUE pendant le jeu (sinon les tableaux n'existent pas encore)
+  if (state !== State.PLAY && state !== State.PAUSE) return;
 
   // power-ups
   for (const p of powerups) {
@@ -965,11 +967,25 @@ window.addEventListener('keydown', e => {
 // ============================================================
 //  MAIN LOOP
 // ============================================================
+let lastError = '';
 function loop() {
-  update();
-  render();
+  try {
+    update();
+    render();
+  } catch (err) {
+    lastError = (err && err.message) ? err.message : String(err);
+    console.error('[NEON VOID]', err);
+    // Affiche l'erreur a l'ecran au lieu de geler le jeu
+    ctx.save();
+    ctx.fillStyle = '#ff0044';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('BUG: ' + lastError, 8, H - 12);
+    ctx.restore();
+  }
   requestAnimationFrame(loop);
 }
+window.addEventListener('error', e => { lastError = e.message; });
 initStars();
 loop();
 
